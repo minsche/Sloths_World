@@ -244,7 +244,7 @@
     joy.addEventListener('pointerup',endTouch);joy.addEventListener('pointercancel',endTouch);
 
     const speed=3.8,gravity=12.5;
-    let vertical=0,velocity=0,bounces=0,playedTime=0,wasOn=false;
+    let vertical=0,velocity=0,bounces=0;
     const clock=new THREE.Clock(),motion=new THREE.Vector3(),target=new THREE.Vector3();
     // Camera forward/right are projected into the floor so WASD matches the screen.
     const forward=new THREE.Vector3(-cameraOffset.x,0,-cameraOffset.z).normalize();
@@ -266,16 +266,15 @@
       }
       const dist=Math.hypot(sloth.position.x-trampoline.position.x,sloth.position.z-trampoline.position.z);
       const onTrampoline=dist<1.22;
-      const base=onTrampoline?.66:0;
-      if(onTrampoline&&vertical<=.67&&velocity<=0){
-        vertical=.68;velocity=Math.min(7.4+bounces*.27,10.8);bounces++;
+      if(onTrampoline&&vertical<=.45&&velocity<=0){
+        vertical=.44;velocity=Math.min(7.4+bounces*.27,10.8);bounces++;
         document.getElementById('count').textContent=String(bounces);
       }else if(vertical>0||velocity>0){
         velocity-=gravity*dt;vertical+=velocity*dt;
-        const floor=onTrampoline?.66:0;
+        const floor=onTrampoline?.44:0;
         if(vertical<=floor){
-          if(onTrampoline){vertical=.68;velocity=Math.min(7.4+bounces*.27,10.8);bounces++;document.getElementById('count').textContent=String(bounces)}
-          else{vertical=0;velocity=0;bounces=bounces; }
+          if(onTrampoline){vertical=.44;velocity=Math.min(7.4+bounces*.27,10.8);bounces++;document.getElementById('count').textContent=String(bounces)}
+          else{vertical=0;velocity=0;}
         }
       }else{vertical=0;velocity=0;}
       sloth.position.y=vertical;
@@ -294,7 +293,6 @@
       look.lerp(target,Math.min(1,dt*2.5));
       camera.position.copy(look).add(cameraOffset);camera.lookAt(look);
       renderer.render(scene,camera);
-      wasOn=onTrampoline;playedTime+=dt;
     }
     tick();
   </script>
