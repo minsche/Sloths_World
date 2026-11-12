@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#e8dcc0" />
+  <meta name="description" content="A cosy little room. A very relaxed sloth. One surprisingly energetic trampoline." />
+  <title>Sloth's World 🦥</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:ui-rounded,"Trebuchet MS",system-ui,sans-serif}
+    body{background:#e8dcc0;color:#334631;touch-action:none}canvas{display:block;touch-action:none}
+    #game{position:fixed;inset:0}
+    .hud{position:fixed;z-index:2;top:max(16px,env(safe-area-inset-top));left:18px;pointer-events:none}
+    .brand{font-size:clamp(24px,3.3vw,39px);letter-spacing:-1px;font-weight:900;line-height:1.05;text-shadow:0 2px 1px #ffffff90}
+    .subtitle{font-size:13px;color:#64745b;margin-top:5px;font-weight:700}
+    .pill{display:inline-flex;gap:9px;align-items:center;margin-top:14px;padding:9px 14px;border-radius:100px;background:#fff9e9e8;box-shadow:0 5px 22px #594b2b1e;font-size:13px;font-weight:800;border:1px solid #fff}
+    .pill b{font-variant-numeric:tabular-nums}
+    .instruction{position:fixed;z-index:2;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);border-radius:999px;background:#324e3ce7;color:#fff9e8;padding:11px 19px;font-weight:800;font-size:13px;white-space:nowrap;box-shadow:0 6px 25px #0002;pointer-events:none}
+    #joystick{display:none;position:fixed;z-index:5;left:26px;bottom:max(34px,env(safe-area-inset-bottom));width:126px;height:126px;border-radius:50%;background:#fff9e89c;border:2px solid #fffef4cf;box-shadow:0 8px 24px #2223;touch-action:none}
+    #stick{position:absolute;top:35px;left:35px;width:52px;height:52px;border-radius:50%;background:#53765c;box-shadow:inset 0 3px 6px #ffffff70,0 5px 15px #2223;pointer-events:none}
+    .mobile-hint{display:none;position:fixed;right:16px;bottom:max(75px,env(safe-area-inset-bottom));font-weight:900;color:#455d43;font-size:13px;text-align:right;max-width:130px;pointer-events:none;text-shadow:0 1px 3px #fff}
+    #error{display:none;position:fixed;inset:0;z-index:9;place-items:center;text-align:center;background:#f9edd6;padding:24px;line-height:1.6;font-weight:700}
+    @media(hover:none),(pointer:coarse){
+      #joystick{display:block}.mobile-hint{display:block}.instruction{display:none}
+      .hud{left:14px}.brand{font-size:26px}.subtitle{font-size:12px}.pill{margin-top:10px}
+    }
+    @media(max-height:420px){#joystick{width:98px;height:98px;left:12px;bottom:12px}#stick{left:24px;top:24px;width:46px;height:46px}.mobile-hint{display:none}}
+  </style>
+  <script type="importmap">
+    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}
+  </script>
+</head>
+<body>
+  <div id="game" aria-label="3D sloth game"></div>
+  <div class="hud">
+    <div class="brand">🦥 Sloth's World</div>
+    <div class="subtitle">Life is better at your own pace.</div>
+    <div class="pill">🌀 Trampoline bounces <b id="count">0</b></div>
+  </div>
+  <div class="instruction">W A S D / arrow keys to wander · Step onto the trampoline to bounce!</div>
+  <div id="joystick" aria-label="Touch joystick"><div id="stick"></div></div>
+  <div class="mobile-hint">Move the joystick<br>to explore 🌿</div>
+  <div id="error">This browser couldn't load the 3D world.<br>Please check your internet connection and reload.</div>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const mount=document.getElementById('game');
+    const scene=new THREE.Scene();
+    scene.background=new THREE.Color('#dfe9d4');
+    scene.fog=new THREE.Fog('#dfe9d4',22,42);
+    const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    renderer.setSize(window.innerWidth,window.innerHeight);
+    renderer.outputColorSpace=THREE.SRGBColorSpace;
+    renderer.toneMapping=THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure=1.68;
+    renderer.shadowMap.enabled=true;
+    renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    mount.appendChild(renderer.domElement);
+
+    const camera=new THREE.OrthographicCamera(-8,8,5,-5,.1,100);
+    const look=new THREE.Vector3(0,.45,0);
+    const cameraOffset=new THREE.Vector3(5.2,10.5,16.5);
+    const hemi=new THREE.HemisphereLight('#ffffff','#91a78c',2.1);scene.add(hemi);
+    const sun=new THREE.DirectionalLight('#ffefcf',3.1);
+    sun.position.set(-3,14,8);sun.castShadow=true;
+    sun.shadow.mapSize.set(1536,1536);
+    sun.shadow.camera.left=-14;sun.shadow.camera.right=14;
+    sun.shadow.camera.top=14;sun.shadow.camera.bottom=-14;
+    sun.shadow.normalBias=.04;scene.add(sun);
+    const fill=new THREE.PointLight('#ffe4a6',22,16);fill.position.set(-4,3,-3);scene.add(fill);
+
+    const mat=(color,roughness=.88,metalness=0)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
+    const mint=mat('#bed5b4'),wall=mat('#f2e1bd'),wood=mat('#ac825c'),darkWood=mat('#6b513d'),leaf=mat('#658f65'),leaf2=mat('#3f7450');
+    const brown=mat('#8b6550'),brownDark=mat('#5f463d'),cream=mat('#efd7b1'),blush=mat('#ce9578'),black=mat('#2b2825',.65),eyeShine=new THREE.MeshBasicMaterial({color:'#ffffff'});
+    const blue=mat('#65b2aa'),yellow=mat('#e6b85b'),paper=mat('#fff4d4');
+    function mesh(geometry,material,parent=scene,x=0,y=0,z=0){
+      const o=new THREE.Mesh(geometry,material);o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o;
+    }
+    function box(w,h,d,material,parent,x=0,y=0,z=0){return mesh(new THREE.BoxGeometry(w,h,d),material,parent,x,y,z)}
+    function ball(rx,ry,rz,material,parent,x=0,y=0,z=0){
+      const o=mesh(new THREE.SphereGeometry(1,24,16),material,parent,x,y,z);o.scale.set(rx,ry,rz);return o;
+    }
+    function cylinder(top,bottom,height,material,parent,x,y,z,sides=24){
+      return mesh(new THREE.CylinderGeometry(top,bottom,height,sides),material,parent,x,y,z);
+    }
+    function line(points,color,radius=.025,parent=scene){
+      const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));
+      return mesh(new THREE.TubeGeometry(curve,30,radius,7,false),mat(color),parent);
+    }
+
+    // Toy-like little room.
+    box(14.4,.35,11.8,mat('#ddc79f'),scene,0,-.25,0);
+    box(14.1,.05,11.5,mat('#d9e4cb'),scene,0,-.045,0);
+    for(let x=-6.5;x<=6.5;x+=1){box(.012,.005,11.25,mat('#c5d7bc'),scene,x,-.012,0)}
+    for(let z=-5;z<=5;z+=1){box(13.95,.005,.012,mat('#c5d7bc'),scene,0,-.012,z)}
+    box(14.4,5.0,.3,wall,scene,0,2.35,-5.75);
+    box(.3,5,11.6,mat('#e5d0ab'),scene,-7.05,2.35,0);
+    box(14.4,.24,.28,darkWood,scene,0,.10,-5.48);
+    box(.26,.24,11.5,darkWood,scene,-6.92,.1,0);
+    for(let x=-6.6;x<=6.6;x+=1.1){
+      box(.026,4.3,.026,mat('#f9eed7'),scene,x,2.45,-5.57).castShadow=false;
+    }
+
+    // Canvas signs stay sharp even though everything is 3D.
+    function sign(text,sub,x,y,z,w=2.7,h=.85,background='#fff6df',ink='#577457'){
+      const c=document.createElement('canvas');c.width=768;c.height=260;
+      const ctx=c.getContext('2d');
+      ctx.fillStyle=background;ctx.fillRect(0,0,c.width,c.height);
+      ctx.lineWidth=15;ctx.strokeStyle='#b18a60';ctx.strokeRect(9,9,750,242);
+      ctx.fillStyle=ink;ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.font='bold 68px Trebuchet MS, sans-serif';ctx.fillText(text,384,105,700);
+      if(sub){ctx.font='bold 34px Trebuchet MS, sans-serif';ctx.fillText(sub,384,183,680)}
+      const texture=new THREE.CanvasTexture(c);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;
+      const plaque=mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}),scene,x,y,z);
+      plaque.castShadow=false;return plaque;
+    }
+    sign('SLOTH’S WORLD','Take your time. Seriously.',-1.9,3.15,-5.55,3.6,1.18);
+    sign('NO HURRY','You’ll get there. Probably.',3.6,2.7,-5.55,3.1,1.03);
+
+    // A modest armchair, cushions, plants, rug and books.
+    const chair=new THREE.Group();chair.position.set(-4.75,0,-3.1);scene.add(chair);
+    box(1.95,.48,1.5,mat('#b77865'),chair,0,.58,0);
+    box(1.9,1.55,.4,mat('#b77865'),chair,0,1.35,-.58);
+    box(.35,.85,1.45,mat('#a96654'),chair,-.9,.8,0);
+    box(.35,.85,1.45,mat('#a96654'),chair,.9,.8,0);
+    ball(.5,.18,.43,cream,chair,-.25,.91,.15);
+    ball(.40,.17,.37,mat('#b7c9aa'),chair,.4,.91,.1);
+    for(const x of [-.7,.7]) for(const z of [-.45,.5])cylinder(.10,.11,.35,darkWood,chair,x,.2,z);
+
+    const rug=mesh(new THREE.CylinderGeometry(1.8,1.8,.025,48),mat('#e7cba4'),scene,-3,.015,2.1);
+    for(let i=0;i<24;i++){const a=i*Math.PI/12;box(.15,.018,.2,mat('#e8b88b'),scene,-3+1.71*Math.cos(a),.03,2.1+1.71*Math.sin(a)).rotation.y=-a;}
+    function plant(x,z,size=1){
+      const p=new THREE.Group();p.position.set(x,0,z);scene.add(p);
+      cylinder(.32*size,.25*size,.5*size,mat('#c88363'),p,0,.28*size,0,12);
+      cylinder(.24*size,.22*size,.06*size,mat('#604a39'),p,0,.57*size,0);
+      cylinder(.045*size,.05*size,1.2*size,darkWood,p,0,1.02*size,0,8);
+      for(let k=0;k<8;k++){const a=k*Math.PI/4;const h=(1.05+(k%3)*.21)*size;
+        const l=ball(.21*size,.52*size,.12*size,k%2?leaf:leaf2,p,Math.sin(a)*.34*size,h,Math.cos(a)*.34*size);
+        l.rotation.z=-Math.sin(a)*.7;l.rotation.x=Math.cos(a)*.7;
+      }
+    }
+    plant(5.75,-4.15,1.2);plant(-6.0,3.1,.86);
+    const shelf=new THREE.Group();shelf.position.set(5.7,0,3.7);scene.add(shelf);
+    for(let h of [.55,1.48])box(1.35,.13,.63,wood,shelf,0,h,0);
+    for(let x of [-.58,.58])box(.12,1.54,.64,darkWood,shelf,x,.79,0);
+    for(let i=0;i<7;i++){
+      const spine=box(.11+(i%3)*.03,.38+(i%2)*.12,.38,mat(['#9eaa78','#d4a16b','#b66e5f','#6a9c9c'][i%4]),shelf,-.45+i*.155,1.73,0);
+      spine.rotation.z=(i%2?.08:-.035);
+    }
+
+    // Trampoline: padded rim, dark fabric, springs, four legs and a cheerful star.
+    const trampoline=new THREE.Group();trampoline.position.set(2.3,0,-.7);scene.add(trampoline);
+    const surface=cylinder(1.19,1.2,.09,mat('#496b69'),trampoline,0,.50,0,56);
+    cylinder(1.24,1.24,.055,mat('#80d7bf'),trampoline,0,.55,0,56);
+    const ring=mesh(new THREE.TorusGeometry(1.43,.17,12,72),blue,trampoline,0,.57,0);
+    ring.rotation.x=Math.PI/2;
+    const inner=mesh(new THREE.TorusGeometry(1.18,.035,8,64),yellow,trampoline,0,.593,0);
+    inner.rotation.x=Math.PI/2;
+    for(let i=0;i<14;i++){
+      const a=i*Math.PI*2/14;
+      const r=1.36;
+      const leg=cylinder(.08,.1,.49,wood,trampoline,Math.sin(a)*r,.25,Math.cos(a)*r,10);
+      if(i%2===0){ball(.11,.06,.11,mat('#4b655a'),trampoline,Math.sin(a)*r,.03,Math.cos(a)*r);}
+      const spring=cylinder(.025,.025,.24,mat('#d6d6c5',.4,.35),trampoline,Math.sin(a)*1.21,.55,Math.cos(a)*1.21,8);
+      spring.rotation.z=Math.cos(a)*Math.PI/2;spring.rotation.x=Math.sin(a)*Math.PI/2;
+    }
+    // Small star decal on the mat.
+    const starShape=new THREE.Shape();const spikes=5;
+    for(let i=0;i<spikes*2;i++){
+      const a=-Math.PI/2+i*Math.PI/spikes,r=i%2===0?.38:.17;
+      const x=Math.cos(a)*r,y=Math.sin(a)*r;
+      if(i===0)starShape.moveTo(x,y);else starShape.lineTo(x,y);
+    }starShape.closePath();
+    const star=mesh(new THREE.ShapeGeometry(starShape),new THREE.MeshBasicMaterial({color:'#f9df90',side:THREE.DoubleSide}),trampoline,0,.6,0);
+    star.rotation.x=-Math.PI/2;
+
+    // Hand-built 3D sloth: deliberately rounded and soft rather than pixel art.
+    const sloth=new THREE.Group();sloth.position.set(-3,0,1.7);scene.add(sloth);
+    const bob=new THREE.Group();sloth.add(bob);
+    ball(.55,.74,.44,brown,bob,0,1.03,0);
+    ball(.40,.59,.12,cream,bob,0,1.02,.40);
+    ball(.55,.48,.48,brown,bob,0,1.83,.045);
+    ball(.43,.34,.29,cream,bob,0,1.87,.36);
+    for(const s of [-1,1]){
+      const patch=ball(.18,.22,.085,brownDark,bob,s*.22,1.90,.594);
+      patch.rotation.z=s*.32;
+      ball(.082,.093,.055,black,bob,s*.22,1.92,.658);
+      ball(.026,.03,.015,eyeShine,bob,s*.238,1.958,.709);
+      ball(.13,.14,.14,brown,bob,s*.49,2.05,-.05);
+      const arm=ball(.22,.50,.24,brown,bob,s*.55,1.12,.06);arm.rotation.z=s*.27;
+      const paw=ball(.23,.20,.20,brownDark,bob,s*.64,.74,.23);
+      for(let c=-1;c<=1;c++){
+        const claw=ball(.037,.115,.036,cream,bob,s*.64+c*.102,.59,.39);
+        claw.rotation.x=.30;
+      }
+      const foot=ball(.30,.24,.36,brownDark,bob,s*.34,.39,.18);
+      for(let c=-1;c<=1;c++)ball(.045,.11,.10,cream,bob,s*.34+c*.12,.26,.48);
+    }
+    ball(.13,.105,.12,brownDark,bob,0,1.76,.67);
+    ball(.055,.025,.025,blush,bob,-.33,1.75,.59);
+    ball(.055,.025,.025,blush,bob,.33,1.75,.59);
+    line([[-.15,1.69,.623],[-.09,1.64,.67],[0,1.625,.68],[.09,1.64,.67],[.15,1.69,.623]],'#5a4039',.018,bob);
+    for(let i=0;i<11;i++){
+      const a=i*2.399,r=.34*Math.sqrt((i+.5)/11);
+      const tuft=ball(.065,.13,.07,i%2?brown:brownDark,bob,Math.cos(a)*r,2.28+Math.sin(a)*.025,Math.sin(a)*r);
+      tuft.rotation.z=Math.cos(a)*.28;
+    }
+    // A semi-transparent contact shadow makes the jump height easy to read.
+    const shadowCanvas=document.createElement('canvas');shadowCanvas.width=128;shadowCanvas.height=128;
+    const sc=shadowCanvas.getContext('2d'),gr=sc.createRadialGradient(64,64,5,64,64,60);
+    gr.addColorStop(0,'#354f3955');gr.addColorStop(1,'#354f3900');sc.fillStyle=gr;sc.fillRect(0,0,128,128);
+    const shadowTex=new THREE.CanvasTexture(shadowCanvas);
+    const contact=mesh(new THREE.PlaneGeometry(1.9,1.6),new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}),scene,-3,.017,1.7);
+    contact.rotation.x=-Math.PI/2;contact.castShadow=false;
+
+    // Camera framing, resize and controls.
+    function resize(){
+      const w=window.innerWidth,h=window.innerHeight,aspect=w/h;
+      const height=aspect<.72?10.6:aspect<1?10.0:9.0;
+      camera.left=-height*aspect/2;camera.right=height*aspect/2;
+      camera.top=height/2;camera.bottom=-height/2;camera.updateProjectionMatrix();
+      renderer.setSize(w,h);renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    }
+    window.addEventListener('resize',resize);resize();
+    const keys=new Set();
+    window.addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();keys.add(e.key.toLowerCase())});
+    window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
+    window.addEventListener('blur',()=>{keys.clear();stickInput.set(0,0);resetStick()});
+    const joy=document.getElementById('joystick'),stick=document.getElementById('stick');
+    const stickInput=new THREE.Vector2();
+    let joyId=null;
+    function resetStick(){stick.style.transform='translate(0px,0px)'}
+    function pointerMove(e){
+      const r=joy.getBoundingClientRect();const x=e.clientX-(r.left+r.width/2),y=e.clientY-(r.top+r.height/2);
+      const len=Math.hypot(x,y),max=40,k=len>max?max/len:1;
+      const px=x*k,py=y*k;
+      stick.style.transform='translate('+px+'px,'+py+'px)';
+      stickInput.set(px/max,-py/max);
+    }
+    joy.addEventListener('pointerdown',e=>{joyId=e.pointerId;joy.setPointerCapture(joyId);pointerMove(e)});
+    joy.addEventListener('pointermove',e=>{if(e.pointerId===joyId)pointerMove(e)});
+    function endTouch(e){if(e.pointerId===joyId){joyId=null;stickInput.set(0,0);resetStick()}}
+    joy.addEventListener('pointerup',endTouch);joy.addEventListener('pointercancel',endTouch);
+
+    const speed=3.8,gravity=12.5;
+    let vertical=0,velocity=0,bounces=0,playedTime=0,wasOn=false;
+    const clock=new THREE.Clock(),motion=new THREE.Vector3(),target=new THREE.Vector3();
+    // Camera forward/right are projected into the floor so WASD matches the screen.
+    const forward=new THREE.Vector3(-cameraOffset.x,0,-cameraOffset.z).normalize();
+    const right=new THREE.Vector3(-forward.z,0,forward.x).normalize();
+    function tick(){
+      requestAnimationFrame(tick);
+      const dt=Math.min(clock.getDelta(),.04),time=clock.elapsedTime;
+      let dx=(keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0)+stickInput.x;
+      let dz=(keys.has('w')||keys.has('arrowup')?1:0)-(keys.has('s')||keys.has('arrowdown')?1:0)+stickInput.y;
+      const len=Math.hypot(dx,dz);if(len>1){dx/=len;dz/=len;}
+      motion.copy(right).multiplyScalar(dx).addScaledVector(forward,dz);
+      if(motion.lengthSq()>.001){
+        sloth.position.x=THREE.MathUtils.clamp(sloth.position.x+motion.x*speed*dt,-6.35,6.35);
+        sloth.position.z=THREE.MathUtils.clamp(sloth.position.z+motion.z*speed*dt,-4.85,4.85);
+        // The sloth can turn to face the direction of travel.
+        const facing=Math.atan2(motion.x,motion.z);
+        let diff=((facing-sloth.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
+        sloth.rotation.y+=diff*Math.min(1,dt*7);
+      }
+      const dist=Math.hypot(sloth.position.x-trampoline.position.x,sloth.position.z-trampoline.position.z);
+      const onTrampoline=dist<1.22;
+      const base=onTrampoline?.66:0;
+      if(onTrampoline&&vertical<=.67&&velocity<=0){
+        vertical=.68;velocity=Math.min(7.4+bounces*.27,10.8);bounces++;
+        document.getElementById('count').textContent=String(bounces);
+      }else if(vertical>0||velocity>0){
+        velocity-=gravity*dt;vertical+=velocity*dt;
+        const floor=onTrampoline?.66:0;
+        if(vertical<=floor){
+          if(onTrampoline){vertical=.68;velocity=Math.min(7.4+bounces*.27,10.8);bounces++;document.getElementById('count').textContent=String(bounces)}
+          else{vertical=0;velocity=0;bounces=bounces; }
+        }
+      }else{vertical=0;velocity=0;}
+      sloth.position.y=vertical;
+      // Subtle living character, not a complicated walk cycle.
+      const walking=motion.lengthSq()>.01;
+      bob.position.y=(walking?.035*Math.sin(time*9):.018*Math.sin(time*2))+(velocity>0?.025:0);
+      bob.rotation.z=walking?.035*Math.sin(time*7):.009*Math.sin(time*1.5);
+      bob.rotation.x=THREE.MathUtils.lerp(bob.rotation.x,velocity>0?-.045:velocity<0?.055:0,dt*4);
+      contact.position.set(sloth.position.x,.025,sloth.position.z);
+      const shrink=1/(1+vertical*.13);contact.scale.setScalar(shrink);
+      contact.material.opacity=Math.max(.20,.85-vertical*.15);
+      surface.scale.y=1+(onTrampoline&&vertical<1?.08*Math.sin(time*16):0);
+      // Camera follows on narrow screens, while revealing most of the room on desktop.
+      const follow=window.innerWidth/window.innerHeight<1?0.85:0.22;
+      target.set(sloth.position.x*follow,.4,sloth.position.z*follow);
+      look.lerp(target,Math.min(1,dt*2.5));
+      camera.position.copy(look).add(cameraOffset);camera.lookAt(look);
+      renderer.render(scene,camera);
+      wasOn=onTrampoline;playedTime+=dt;
+    }
+    tick();
+  </script>
+</body>
+</html>
