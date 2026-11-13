@@ -153,33 +153,30 @@
       spine.rotation.z=(i%2?.08:-.035);
     }
 
-    // Trampoline: padded rim, dark fabric, springs, four legs and a cheerful star.
+    // A trampoline inset into the floor: the walking surface is at y=0.
+    // Its rim is decorative, not an obstacle or a step to climb over.
     const trampoline=new THREE.Group();trampoline.position.set(2.3,0,-.7);scene.add(trampoline);
-    const surface=cylinder(1.19,1.2,.09,mat('#496b69'),trampoline,0,.50,0,56);
-    cylinder(1.24,1.24,.055,mat('#80d7bf'),trampoline,0,.55,0,56);
-    const ring=mesh(new THREE.TorusGeometry(1.43,.17,12,72),blue,trampoline,0,.57,0);
+    cylinder(1.36,1.36,.025,mat('#80d7bf'),trampoline,0,-.030,0,64);
+    const surface=cylinder(1.19,1.19,.025,mat('#496b69'),trampoline,0,-.011,0,64);
+    const ring=mesh(new THREE.TorusGeometry(1.37,.104,12,72),blue,trampoline,0,-.11,0);
     ring.rotation.x=Math.PI/2;
-    const inner=mesh(new THREE.TorusGeometry(1.18,.035,8,64),yellow,trampoline,0,.593,0);
+    const inner=mesh(new THREE.TorusGeometry(1.205,.028,8,64),yellow,trampoline,0,-.019,0);
     inner.rotation.x=Math.PI/2;
-    for(let i=0;i<14;i++){
-      const a=i*Math.PI*2/14;
-      const r=1.36;
-      const leg=cylinder(.08,.1,.49,wood,trampoline,Math.sin(a)*r,.25,Math.cos(a)*r,10);
-      if(i%2===0){ball(.11,.06,.11,mat('#4b655a'),trampoline,Math.sin(a)*r,.03,Math.cos(a)*r);}
-      const spring=cylinder(.025,.025,.24,mat('#d6d6c5',.4,.35),trampoline,Math.sin(a)*1.21,.55,Math.cos(a)*1.21,8);
-      spring.rotation.z=Math.cos(a)*Math.PI/2;spring.rotation.x=Math.sin(a)*Math.PI/2;
+    for(let i=0;i<20;i++){
+      const a=i*Math.PI*2/20;
+      ball(.035,.009,.035,mat('#d6d6c5',.4,.35),trampoline,Math.sin(a)*1.28,.006,Math.cos(a)*1.28);
     }
-    // Small star decal on the mat.
+    // Small star decal, also flush with the trampoline mat.
     const starShape=new THREE.Shape();const spikes=5;
     for(let i=0;i<spikes*2;i++){
       const a=-Math.PI/2+i*Math.PI/spikes,r=i%2===0?.38:.17;
       const x=Math.cos(a)*r,y=Math.sin(a)*r;
       if(i===0)starShape.moveTo(x,y);else starShape.lineTo(x,y);
     }starShape.closePath();
-    const star=mesh(new THREE.ShapeGeometry(starShape),new THREE.MeshBasicMaterial({color:'#f9df90',side:THREE.DoubleSide}),trampoline,0,.6,0);
+    const star=mesh(new THREE.ShapeGeometry(starShape),new THREE.MeshBasicMaterial({color:'#f9df90',side:THREE.DoubleSide}),trampoline,0,.008,0);
     star.rotation.x=-Math.PI/2;
 
-    // GLB character: keep the art independent of gameplay physics and camera.
+     // GLB character: keep the art independent of gameplay physics and camera.
     const sloth=new THREE.Group();sloth.position.set(-3,0,1.7);scene.add(sloth);
     const bob=new THREE.Group();sloth.add(bob);
     let slothMixer=null;
@@ -268,6 +265,55 @@
     // Camera forward/right are projected into the floor so WASD matches the screen.
     const forward=new THREE.Vector3(-cameraOffset.x,0,-cameraOffset.z).normalize();
     const right=new THREE.Vector3(-forward.z,0,forward.x).normalize();
+
+    // The sloth is a disc on the room's X/Z floor plane.
+    // Decorative surfaces (rug, trampoline, floor) are walkable.
+    // Furniture, pots and walls block movement, including while airborne.
+    const collisionRadius=.46;
+    const roomBounds={minX:-6.44,maxX:6.48,minZ:-5.10,maxZ:5.20};
+    const solidObjects=[
+      {type:'box',minX:-5.86,maxX:-3.65,minZ:-3.89,maxZ:-2.30}, // armchair
+      {type:'box',minX:4.98,maxX:6.42,minZ:3.33,maxZ:4.08},    // bookshelf
+      {type:'circle',x:5.75,z:-4.15,r:.40},                    // potted plant
+      {type:'circle',x:-6.0,z:3.1,r:.30}                       // potted plant
+    ];
+    function blocked(x,z){
+      if(x<roomBounds.minX||x>roomBounds.maxX||
+         z<roomBounds.minZ||z>roomBounds.maxZ)return true;
+      for(const obstacle of solidObjects){
+        if(obstacle.type==='circle'){
+          const dx=x-obstacle.x,dz=z-obstacle.z;
+          if(dx*dx+dz*dz<(collisionRadius+obstacle.r)**2)return true;
+        }else{
+          const closestX=THREE.MathUtils.clamp(x,obstacle.minX,obstacle.maxX);
+          const closestZ=THREE.MathUtils.clamp(z,obstacle.minZ,obstacle.maxZ);
+          const dx=x-closestX,dz=z-closestZ;
+          if(dx*dx+dz*dz<collisionRadius**2)return true;
+        }
+      }
+      return false;
+    }
+    function moveSloth(dx,dz){
+      // Small steps avoid tunnelling through thin furniture at low frame rates.
+      const steps=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.08));
+      dx/=steps;dz/=steps;
+      for(let i=0;i<steps;i++){
+        const x=sloth.position.x,z=sloth.position.z;
+        if(!blocked(x+dx,z+dz)){
+          sloth.position.x+=dx;sloth.position.z+=dz;
+        }else{
+          // Separating the axes lets the character slide alongside furniture.
+          if(!blocked(sloth.position.x+dx,sloth.position.z))sloth.position.x+=dx;
+          if(!blocked(sloth.position.x,sloth.position.z+dz))sloth.position.z+=dz;
+        }
+      }
+    }
+    function bounce(){
+      vertical=0;
+      velocity=Math.min(7.4+bounces*.27,10.8);
+      bounces++;
+      document.getElementById('count').textContent=String(bounces);
+    }
     function tick(){
       requestAnimationFrame(tick);
       const dt=Math.min(clock.getDelta(),.04),time=clock.elapsedTime;
@@ -277,26 +323,28 @@
       const len=Math.hypot(dx,dz);if(len>1){dx/=len;dz/=len;}
       motion.copy(right).multiplyScalar(dx).addScaledVector(forward,dz);
       if(motion.lengthSq()>.001){
-        sloth.position.x=THREE.MathUtils.clamp(sloth.position.x+motion.x*speed*dt,-6.35,6.35);
-        sloth.position.z=THREE.MathUtils.clamp(sloth.position.z+motion.z*speed*dt,-4.85,4.85);
-        // The sloth can turn to face the direction of travel.
+        moveSloth(motion.x*speed*dt,motion.z*speed*dt);
         const facing=Math.atan2(motion.x,motion.z);
-        let diff=((facing-sloth.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
+        const diff=((facing-sloth.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
         sloth.rotation.y+=diff*Math.min(1,dt*7);
       }
       const dist=Math.hypot(sloth.position.x-trampoline.position.x,sloth.position.z-trampoline.position.z);
       const onTrampoline=dist<1.22;
-      if(onTrampoline&&vertical<=.45&&velocity<=0){
-        vertical=.44;velocity=Math.min(7.4+bounces*.27,10.8);bounces++;
-        document.getElementById('count').textContent=String(bounces);
+      // The trampoline and floor are at exactly the same gameplay height.
+      if(onTrampoline&&vertical<=0&&velocity<=0){
+        bounce();
       }else if(vertical>0||velocity>0){
-        velocity-=gravity*dt;vertical+=velocity*dt;
-        const floor=onTrampoline?.44:0;
-        if(vertical<=floor){
-          if(onTrampoline){vertical=.44;velocity=Math.min(7.4+bounces*.27,10.8);bounces++;document.getElementById('count').textContent=String(bounces)}
-          else{vertical=0;velocity=0;}
+        velocity-=gravity*dt;
+        vertical+=velocity*dt;
+        if(vertical<=0){
+          vertical=0;
+          if(onTrampoline)bounce();
+          else velocity=0;
         }
-      }else{vertical=0;velocity=0;}
+      }else{
+        vertical=0;
+        velocity=0;
+      }
       sloth.position.y=vertical;
       // Subtle living character, not a complicated walk cycle.
       const walking=motion.lengthSq()>.01;
@@ -306,7 +354,7 @@
       contact.position.set(sloth.position.x,.025,sloth.position.z);
       const shrink=1/(1+vertical*.13);contact.scale.setScalar(shrink);
       contact.material.opacity=Math.max(.20,.85-vertical*.15);
-      surface.scale.y=1+(onTrampoline&&vertical<1?.08*Math.sin(time*16):0);
+      surface.position.y=-.011-(onTrampoline&&vertical<.35?.012*Math.sin(time*14)**2:0);
       // Camera follows on narrow screens, while revealing most of the room on desktop.
       const follow=window.innerWidth/window.innerHeight<1?0.85:0.22;
       target.set(sloth.position.x*follow,.4,sloth.position.z*follow);
