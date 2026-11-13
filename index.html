@@ -18,6 +18,8 @@
     .instruction{position:fixed;z-index:2;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);border-radius:999px;background:#324e3ce7;color:#fff9e8;padding:11px 19px;font-weight:800;font-size:13px;white-space:nowrap;box-shadow:0 6px 25px #0002;pointer-events:none}
     #joystick{display:none;position:fixed;z-index:5;left:26px;bottom:max(34px,env(safe-area-inset-bottom));width:126px;height:126px;border-radius:50%;background:#fff9e89c;border:2px solid #fffef4cf;box-shadow:0 8px 24px #2223;touch-action:none}
     #stick{position:absolute;top:35px;left:35px;width:52px;height:52px;border-radius:50%;background:#53765c;box-shadow:inset 0 3px 6px #ffffff70,0 5px 15px #2223;pointer-events:none}
+    #model-status{position:fixed;top:16px;right:16px;z-index:3;background:#fff9e9;padding:9px 13px;border-radius:12px;font-size:13px;font-weight:800;box-shadow:0 5px 16px #0002}
+    #model-status[hidden]{display:none}
     .mobile-hint{display:none;position:fixed;right:16px;bottom:max(75px,env(safe-area-inset-bottom));font-weight:900;color:#455d43;font-size:13px;text-align:right;max-width:130px;pointer-events:none;text-shadow:0 1px 3px #fff}
     #error{display:none;position:fixed;inset:0;z-index:9;place-items:center;text-align:center;background:#f9edd6;padding:24px;line-height:1.6;font-weight:700}
     @media(hover:none),(pointer:coarse){
@@ -27,7 +29,7 @@
     @media(max-height:420px){#joystick{width:98px;height:98px;left:12px;bottom:12px}#stick{left:24px;top:24px;width:46px;height:46px}.mobile-hint{display:none}}
   </style>
   <script type="importmap">
-    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}
+    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}
   </script>
 </head>
 <body>
@@ -40,9 +42,11 @@
   <div class="instruction">W A S D / arrow keys to wander · Step onto the trampoline to bounce!</div>
   <div id="joystick" aria-label="Touch joystick"><div id="stick"></div></div>
   <div class="mobile-hint">Move the joystick<br>to explore 🌿</div>
+  <div id="model-status" role="status" aria-live="polite">Loading your sloth…</div>
   <div id="error">This browser couldn't load the 3D world.<br>Please check your internet connection and reload.</div>
   <script type="module">
     import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
     const mount=document.getElementById('game');
     const scene=new THREE.Scene();
@@ -175,37 +179,52 @@
     const star=mesh(new THREE.ShapeGeometry(starShape),new THREE.MeshBasicMaterial({color:'#f9df90',side:THREE.DoubleSide}),trampoline,0,.6,0);
     star.rotation.x=-Math.PI/2;
 
-    // Hand-built 3D sloth: deliberately rounded and soft rather than pixel art.
+    // GLB character: keep the art independent of gameplay physics and camera.
     const sloth=new THREE.Group();sloth.position.set(-3,0,1.7);scene.add(sloth);
     const bob=new THREE.Group();sloth.add(bob);
-    ball(.55,.74,.44,brown,bob,0,1.03,0);
-    ball(.40,.59,.12,cream,bob,0,1.02,.40);
-    ball(.55,.48,.48,brown,bob,0,1.83,.045);
-    ball(.43,.34,.29,cream,bob,0,1.87,.36);
-    for(const s of [-1,1]){
-      const patch=ball(.18,.22,.085,brownDark,bob,s*.22,1.90,.594);
-      patch.rotation.z=s*.32;
-      ball(.082,.093,.055,black,bob,s*.22,1.92,.658);
-      ball(.026,.03,.015,eyeShine,bob,s*.238,1.958,.709);
-      ball(.13,.14,.14,brown,bob,s*.49,2.05,-.05);
-      const arm=ball(.22,.50,.24,brown,bob,s*.55,1.12,.06);arm.rotation.z=s*.27;
-      const paw=ball(.23,.20,.20,brownDark,bob,s*.64,.74,.23);
-      for(let c=-1;c<=1;c++){
-        const claw=ball(.037,.115,.036,cream,bob,s*.64+c*.102,.59,.39);
-        claw.rotation.x=.30;
+    let slothMixer=null;
+    const modelStatus=document.getElementById('model-status');
+    const loader=new GLTFLoader();
+    loader.load('./cute_sloth.glb',(gltf)=>{
+      const character=gltf.scene;
+      character.updateMatrixWorld(true);
+      const bounds=new THREE.Box3().setFromObject(character);
+      const dimensions=bounds.getSize(new THREE.Vector3());
+      if(!Number.isFinite(dimensions.y)||dimensions.y<.001){
+        modelStatus.textContent='The sloth model has no usable geometry.';
+        return;
       }
-      const foot=ball(.30,.24,.36,brownDark,bob,s*.34,.39,.18);
-      for(let c=-1;c<=1;c++)ball(.045,.11,.10,cream,bob,s*.34+c*.12,.26,.48);
-    }
-    ball(.13,.105,.12,brownDark,bob,0,1.76,.67);
-    ball(.055,.025,.025,blush,bob,-.33,1.75,.59);
-    ball(.055,.025,.025,blush,bob,.33,1.75,.59);
-    line([[-.15,1.69,.623],[-.09,1.64,.67],[0,1.625,.68],[.09,1.64,.67],[.15,1.69,.623]],'#5a4039',.018,bob);
-    for(let i=0;i<11;i++){
-      const a=i*2.399,r=.34*Math.sqrt((i+.5)/11);
-      const tuft=ball(.065,.13,.07,i%2?brown:brownDark,bob,Math.cos(a)*r,2.28+Math.sin(a)*.025,Math.sin(a)*r);
-      tuft.rotation.z=Math.cos(a)*.28;
-    }
+      // Fit a 2.28-unit-tall sloth within a 1.75-unit footprint.
+      const scale=Math.min(2.28/dimensions.y,1.75/Math.max(dimensions.x,dimensions.z,.001));
+      character.scale.multiplyScalar(scale);
+      character.updateMatrixWorld(true);
+      bounds.setFromObject(character);
+      const center=bounds.getCenter(new THREE.Vector3());
+      character.position.x-=center.x;
+      character.position.y-=bounds.min.y;
+      character.position.z-=center.z;
+      character.traverse((child)=>{
+        if(child.isMesh){
+          child.castShadow=true;
+          child.receiveShadow=true;
+          if(child.material){
+            for(const material of (Array.isArray(child.material)?child.material:[child.material])){
+              material.needsUpdate=true;
+            }
+          }
+        }
+      });
+      bob.add(character);
+      const idle=gltf.animations.find(clip=>/idle|breath|blink/i.test(clip.name));
+      if(idle){
+        slothMixer=new THREE.AnimationMixer(character);
+        slothMixer.clipAction(idle).play();
+      }
+      modelStatus.hidden=true;
+    },undefined,(error)=>{
+      console.error('Failed to load cute_sloth.glb:',error);
+      modelStatus.textContent='Could not load cute_sloth.glb — please reload.';
+    });
     // A semi-transparent contact shadow makes the jump height easy to read.
     const shadowCanvas=document.createElement('canvas');shadowCanvas.width=128;shadowCanvas.height=128;
     const sc=shadowCanvas.getContext('2d'),gr=sc.createRadialGradient(64,64,5,64,64,60);
@@ -252,6 +271,7 @@
     function tick(){
       requestAnimationFrame(tick);
       const dt=Math.min(clock.getDelta(),.04),time=clock.elapsedTime;
+      if(slothMixer)slothMixer.update(dt);
       let dx=(keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0)+stickInput.x;
       let dz=(keys.has('w')||keys.has('arrowup')?1:0)-(keys.has('s')||keys.has('arrowdown')?1:0)+stickInput.y;
       const len=Math.hypot(dx,dz);if(len>1){dx/=len;dz/=len;}
