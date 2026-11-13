@@ -95,9 +95,44 @@
 
     // Toy-like little room.
     box(14.4,.35,11.8,mat('#ddc79f'),scene,0,-.25,0);
-    box(14.1,.05,11.5,mat('#d9e4cb'),scene,0,-.045,0);
-    for(let x=-6.5;x<=6.5;x+=1){box(.012,.005,11.25,mat('#c5d7bc'),scene,x,-.012,0)}
-    for(let z=-5;z<=5;z+=1){box(13.95,.005,.012,mat('#c5d7bc'),scene,0,-.012,z)}
+    // Cut a real circular opening in the floor for the inset trampoline.
+    // Without this hole the floor/grid could show through the springing mat.
+    const trampolineCenter={x:2.3,z:-.7},trampolineCutout=1.43;
+    const floorShape=new THREE.Shape();
+    floorShape.moveTo(-7.05,-5.75);floorShape.lineTo(7.05,-5.75);
+    floorShape.lineTo(7.05,5.75);floorShape.lineTo(-7.05,5.75);floorShape.closePath();
+    const hole=new THREE.Path();
+    hole.absarc(trampolineCenter.x,-trampolineCenter.z,trampolineCutout,0,Math.PI*2,true);
+    floorShape.holes.push(hole);
+    const floorGeometry=new THREE.ExtrudeGeometry(floorShape,{depth:.05,bevelEnabled:false,curveSegments:72});
+    floorGeometry.rotateX(-Math.PI/2);
+    const floor=mesh(floorGeometry,mat('#d9e4cb'),scene,0,-.07,0);
+    floor.castShadow=false;
+
+    // Tile seams stop at the trampoline rather than crossing beneath it.
+    const seamMaterial=mat('#c5d7bc'),seamClearance=1.54;
+    function floorSeam(x1,z1,x2,z2){
+      const mx=(x1+x2)/2,mz=(z1+z2)/2;
+      const length=Math.hypot(x2-x1,z2-z1);
+      if(length<.02)return;
+      const seam=box(Math.abs(z2-z1)<.001?length:.012,.005,
+                     Math.abs(x2-x1)<.001?length:.012,seamMaterial,scene,mx,-.012,mz);
+      seam.castShadow=false;
+    }
+    for(let x=-6.5;x<=6.5;x+=1){
+      const dx=x-trampolineCenter.x;
+      if(Math.abs(dx)>=seamClearance){floorSeam(x,-5.625,x,5.625);continue;}
+      const reach=Math.sqrt(seamClearance**2-dx**2);
+      floorSeam(x,-5.625,x,trampolineCenter.z-reach);
+      floorSeam(x,trampolineCenter.z+reach,x,5.625);
+    }
+    for(let z=-5;z<=5;z+=1){
+      const dz=z-trampolineCenter.z;
+      if(Math.abs(dz)>=seamClearance){floorSeam(-6.975,z,6.975,z);continue;}
+      const reach=Math.sqrt(seamClearance**2-dz**2);
+      floorSeam(-6.975,z,trampolineCenter.x-reach,z);
+      floorSeam(trampolineCenter.x+reach,z,6.975,z);
+    }
     box(14.4,5.0,.3,wall,scene,0,2.35,-5.75);
     box(.3,5,11.6,mat('#e5d0ab'),scene,-7.05,2.35,0);
     box(14.4,.24,.28,darkWood,scene,0,.10,-5.48);
@@ -119,7 +154,9 @@
       const plaque=mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}),scene,x,y,z);
       plaque.castShadow=false;return plaque;
     }
-    sign('SLOTH’S WORLD','Take your time. Seriously.',-1.9,3.15,-5.55,3.6,1.18);
+    // Put the main sign on the inner face of the left wall, facing into the room.
+    const leftSign=sign('SLOTH’S WORLD','Take your time. Seriously.',-6.84,2.75,-1.55,3.6,1.18);
+    leftSign.rotation.y=Math.PI/2;
     sign('NO HURRY','You’ll get there. Probably.',3.6,2.7,-5.55,3.1,1.03);
 
     // A modest armchair, cushions, plants, rug and books.
@@ -155,7 +192,7 @@
 
     // A trampoline inset into the floor: the walking surface is at y=0.
     // Its rim is decorative, not an obstacle or a step to climb over.
-    const trampoline=new THREE.Group();trampoline.position.set(2.3,0,-.7);scene.add(trampoline);
+    const trampoline=new THREE.Group();trampoline.position.set(trampolineCenter.x,0,trampolineCenter.z);scene.add(trampoline);
     cylinder(1.36,1.36,.025,mat('#80d7bf'),trampoline,0,-.030,0,64);
     const surface=cylinder(1.19,1.19,.025,mat('#496b69'),trampoline,0,-.011,0,64);
     const ring=mesh(new THREE.TorusGeometry(1.37,.104,12,72),blue,trampoline,0,-.11,0);
@@ -354,7 +391,10 @@
       contact.position.set(sloth.position.x,.025,sloth.position.z);
       const shrink=1/(1+vertical*.13);contact.scale.setScalar(shrink);
       contact.material.opacity=Math.max(.20,.85-vertical*.15);
-      surface.position.y=-.011-(onTrampoline&&vertical<.35?.012*Math.sin(time*14)**2:0);
+      // Depress the mat and its star together; the floor has a genuine opening.
+      const matDip=onTrampoline&&vertical<.35?.012*Math.sin(time*14)**2:0;
+      surface.position.y=-.011-matDip;
+      star.position.y=.008-matDip;
       // Camera follows on narrow screens, while revealing most of the room on desktop.
       const follow=window.innerWidth/window.innerHeight<1?0.85:0.22;
       target.set(sloth.position.x*follow,.4,sloth.position.z*follow);
