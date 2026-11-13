@@ -22,7 +22,8 @@ To publish, connect this repository to Netlify with **no build command** and the
 - Orthographic, Zelda-inspired camera and lighting
 - Cute GLB sloth character (`cute_sloth.glb`) and a decorated room
 - Soft shadows, furniture, plants and a couple of suitably slow motivational signs
-- Trampoline with physics-based bounce and air steering
+- Floor-inset trampoline with physics-based bounce and air steering (no step to climb)
+- Collision detection for room boundaries, armchair, bookshelf and plant pots, with wall sliding
 - Mobile touch controls and responsive layout
 
 Built as a small, approachable foundation for further iterations.
