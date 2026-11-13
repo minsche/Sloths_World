@@ -20,7 +20,7 @@ To publish, connect this repository to Netlify with **no build command** and the
 ## Prototype features
 
 - Orthographic, Zelda-inspired camera and lighting
-- Procedural 3D sloth and decorated room (no external model files)
+- Cute GLB sloth character (`cute_sloth.glb`) and a decorated room
 - Soft shadows, furniture, plants and a couple of suitably slow motivational signs
 - Trampoline with physics-based bounce and air steering
 - Mobile touch controls and responsive layout
